@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Quản Lý Kho Máy</title>
+    <style>
+        /* Giao diện tối ưu cho iPhone */
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            padding: 15px; 
+            background: #f2f2f7; 
+            margin: 0; 
+        }
+        .container { 
+            max-width: 100%; 
+            margin: 0 auto; 
+        }
+        h2 { 
+            text-align: center; 
+            color: #1c1c1e; 
+            margin-top: 10px;
+        }
+        input, button { 
+            width: 100%; 
+            padding: 14px; 
+            margin: 6px 0; 
+            border: 1px solid #d1d1d6; 
+            border-radius: 10px; 
+            box-sizing: border-box; 
+            font-size: 16px; /* Chống zoom trên Safari iOS */
+        }
+        input:focus {
+            outline: none;
+            border-color: #007aff;
+        }
+        button { 
+            background-color: #007aff; 
+            color: white; 
+            border: none; 
+            font-weight: 600; 
+            cursor: pointer; 
+            margin-top: 10px;
+        }
+        .search-box { 
+            margin-bottom: 20px; 
+            position: sticky;
+            top: 0;
+            background: #f2f2f7;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            z-index: 100;
+        }
+        .phone-item { 
+            background: #ffffff; 
+            padding: 16px; 
+            border-radius: 12px; 
+            margin-bottom: 12px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .phone-item strong { 
+            display: block; 
+            font-size: 18px; 
+            color: #000; 
+            margin-bottom: 8px;
+        }
+        .phone-item span { 
+            display: block; 
+            color: #3a3a3c; 
+            margin-bottom: 4px;
+            font-size: 15px;
+        }
+        .price {
+            color: #ff3b30 !important;
+            font-weight: 600;
+        }
+        .action-btn { 
+            display: flex; 
+            gap: 10px; 
+            margin-top: 15px; 
+        }
+        .action-btn button { 
+            padding: 10px; 
+            font-size: 14px; 
+            margin: 0; 
+            border-radius: 8px;
+        }
+        .btn-edit { background-color: #ff9500; }
+        .btn-delete { background-color: #ff3b30; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Quản Lý Hàng Hóa</h2>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="🔍 Tìm theo tên máy hoặc IMEI..." onkeyup="searchPhone()">
+        </div>
+
+        <div id="formContainer">
+            <input type="hidden" id="editIndex" value="-1">
+            <input type="text" id="nameInput" placeholder="Tên máy (VD: iPhone 15 Pro Max 256GB)">
+            <input type="number" id="imeiInput" placeholder="Số IMEI">
+            <input type="text" id="conditionInput" placeholder="Tình trạng (VD: Zin 99%, Pin 88%)">
+            <input type="text" id="priceInput" placeholder="Giá bán (VD: 25.500.000)">
+            <button onclick="savePhone()" id="saveBtn">Thêm Máy Mới</button>
+        </div>
+
+        <div class="phone-list" id="phoneList" style="margin-top: 25px;"></div>
+    </div>
+
+    <script>
+        let phones = JSON.parse(localStorage.getItem('phoneData')) || [];
+
+        function renderPhones(filterText = '') {
+            const list = document.getElementById('phoneList');
+            list.innerHTML = '';
+            
+            const filteredPhones = phones.filter(phone => 
+                phone.name.toLowerCase().includes(filterText.toLowerCase()) || 
+                phone.imei.includes(filterText)
+            );
+
+            if(filteredPhones.length === 0 && filterText !== '') {
+                list.innerHTML = '<p style="text-align:center; color:#8e8e93;">Không tìm thấy máy nào!</p>';
+                return;
+            }
+
+            // Hiển thị máy mới thêm lên đầu
+            filteredPhones.slice().reverse().forEach(phone => {
+                const originalIndex = phones.indexOf(phone);
+                list.innerHTML += `
+                    <div class="phone-item">
+                        <strong>${phone.name}</strong>
+                        <span>IMEI: ${phone.imei}</span>
+                        <span>Tình trạng: ${phone.condition}</span>
+                        <span>Giá bán: <span class="price">${phone.price}</span></span>
+                        <div class="action-btn">
+                            <button class="btn-edit" onclick="editPhone(${originalIndex})">Sửa</button>
+                            <button class="btn-delete" onclick="deletePhone(${originalIndex})">Xóa</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function savePhone() {
+            const name = document.getElementById('nameInput').value.trim();
+            const imei = document.getElementById('imeiInput').value.trim();
+            const condition = document.getElementById('conditionInput').value.trim();
+            const price = document.getElementById('priceInput').value.trim();
+            const editIndex = parseInt(document.getElementById('editIndex').value);
+
+            if (!name || !imei) {
+                alert('Vui lòng nhập Tên máy và IMEI!');
+                return;
+            }
+
+            const phoneData = { name, imei, condition, price };
+
+            if (editIndex === -1) {
+                phones.push(phoneData);
+            } else {
+                phones[editIndex] = phoneData;
+                document.getElementById('editIndex').value = '-1';
+                document.getElementById('saveBtn').innerText = 'Thêm Máy Mới';
+            }
+
+            localStorage.setItem('phoneData', JSON.stringify(phones));
+            clearForm();
+            renderPhones(document.getElementById('searchInput').value);
+        }
+
+        function editPhone(index) {
+            const phone = phones[index];
+            document.getElementById('nameInput').value = phone.name;
+            document.getElementById('imeiInput').value = phone.imei;
+            document.getElementById('conditionInput').value = phone.condition;
+            document.getElementById('priceInput').value = phone.price;
+            document.getElementById('editIndex').value = index;
+            document.getElementById('saveBtn').innerText = 'Lưu Cập Nhật';
+            
+            // Cuộn lên đầu trang để sửa
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function deletePhone(index) {
+            if (confirm('Bạn có chắc chắn muốn xóa dữ liệu máy này?')) {
+                phones.splice(index, 1);
+                localStorage.setItem('phoneData', JSON.stringify(phones));
+                renderPhones(document.getElementById('searchInput').value);
+            }
+        }
+
+        function searchPhone() {
+            const filter = document.getElementById('searchInput').value;
+            renderPhones(filter);
+        }
+
+        function clearForm() {
+            document.getElementById('nameInput').value = '';
+            document.getElementById('imeiInput').value = '';
+            document.getElementById('conditionInput').value = '';
+            document.getElementById('priceInput').value = '';
+        }
+
+        // Tải danh sách khi mở trang
+        renderPhones();
+    </script>
+</body>
+</html>
