@@ -1,89 +1,266 @@
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
-      .setTitle('Kho Nguyễn Quân Mobile')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-}
-
-function getData() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Data');
-  var data = sheet.getDataRange().getValues();
-  var result = [];
-  for (var i = 1; i < data.length; i++) {
-    if (data[i][0] !== "") { 
-      result.push({
-        name: data[i][0],
-        imei: data[i][1],
-        condition: data[i][2],
-        price: data[i][3],
-        status: data[i][4] || 'Còn máy',
-        image: data[i][5] || '',
-        id: data[i][6] 
-      });
-    }
-  }
-  return result; // Sắp xếp hiển thị mới nhất lên đầu sẽ xử lý ở giao diện
-}
-
-function saveImage(base64Data, fileName) {
-  try {
-    var splitBase = base64Data.split(',');
-    var type = splitBase[0].split(';')[0].replace('data:', '');
-    var byteCharacters = Utilities.base64Decode(splitBase[1]);
-    var blob = Utilities.newBlob(byteCharacters, type, fileName);
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Quản Lý Kho Hàng</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; background: #f2f2f7; margin: 0; }
+        .container { max-width: 100%; margin: 0 auto; padding-bottom: 30px; }
+        h2 { text-align: center; color: #1c1c1e; margin-top: 10px; margin-bottom: 20px; font-size: 22px; }
+        input, select, button { width: 100%; padding: 14px; margin: 6px 0; border: 1px solid #d1d1d6; border-radius: 10px; font-size: 16px; box-sizing: border-box; background: white; }
+        input:focus, select:focus { outline: none; border-color: #007aff; }
+        input[type="file"] { padding: 10px; font-size: 14px; border: 1px dashed #007aff; background: #f9f9f9; }
+        button { background-color: #007aff; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 10px; box-shadow: 0 2px 4px rgba(0,122,255,0.3); }
+        button:active { transform: scale(0.98); }
+        
+        .filters { display: flex; gap: 8px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; }
+        .filters::-webkit-scrollbar { display: none; }
+        .filters button { background: #e5e5ea; color: #1c1c1e; margin: 0; padding: 10px 15px; font-size: 14px; white-space: nowrap; border-radius: 20px; box-shadow: none; font-weight: normal; }
+        .filters button.active { background: #007aff; color: white; font-weight: bold; }
+        
+        .search-box { position: sticky; top: 0; background: #f2f2f7; padding: 10px 0 5px 0; z-index: 100; border-bottom: 1px solid #e5e5ea; margin-bottom: 15px; }
+        
+        .phone-item { background: #ffffff; padding: 16px; border-radius: 16px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #f0f0f0; }
+        .phone-item img { width: 100%; height: 220px; object-fit: cover; border-radius: 10px; margin-bottom: 12px; border: 1px solid #eee; display: block; }
+        .phone-item strong { display: block; font-size: 18px; margin-bottom: 8px; color: #1c1c1e; }
+        .phone-item span { display: block; color: #636366; margin-bottom: 6px; font-size: 15px; }
+        .price { color: #ff3b30 !important; font-weight: bold; font-size: 16px !important; }
+        
+        .badge { display: inline-block; padding: 5px 10px; border-radius: 8px; font-size: 13px; font-weight: bold; color: white; margin-bottom: 12px; }
+        .badge-con-may { background: #34c759; }
+        .badge-da-ban { background: #ff3b30; }
+        .badge-cho-muon { background: #ff9500; }
+        
+        .action-btn { display: flex; gap: 10px; margin-top: 15px; border-top: 1px solid #f2f2f7; padding-top: 15px; }
+        .action-btn button { padding: 12px; font-size: 15px; margin: 0; border-radius: 10px; flex: 1; box-shadow: none; }
+        .btn-edit { background-color: #f2f2f7; color: #007aff; border: 1px solid #007aff; }
+        .btn-delete { background-color: #fff0f0; color: #ff3b30; border: 1px solid #ff3b30; }
+        
+        .form-card { background: white; padding: 20px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .form-card h3 { margin-top: 0; font-size: 18px; color: #1c1c1e; margin-bottom: 15px; text-align: center; }
+        
+        #loading { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.85); z-index: 999; justify-content: center; align-items: center; font-weight: bold; color: #007aff; flex-direction: column; font-size: 16px; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #007aff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">Đang đồng bộ dữ liệu...</div>
+    </div>
     
-    var folder;
-    var folderIterator = DriveApp.getFoldersByName("Anh_Kho_May");
-    if (folderIterator.hasNext()) {
-      folder = folderIterator.next();
-    } else {
-      folder = DriveApp.createFolder("Anh_Kho_May");
-      folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    }
-    
-    var file = folder.createFile(blob);
-    return "https://drive.google.com/uc?export=view&id=" + file.getId();
-  } catch (e) {
-    return "";
-  }
-}
+    <div class="container">
+        <h2>📱 Nguyễn Quân Mobile</h2>
 
-function addPhone(phone) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Data');
-  var id = new Date().getTime().toString(); 
-  var imageUrl = phone.image || "";
-  
-  if (phone.imageBase64) {
-     imageUrl = saveImage(phone.imageBase64, "IMG_" + phone.imei + "_" + id);
-  }
-  
-  sheet.appendRow([phone.name, phone.imei, phone.condition, phone.price, phone.status, imageUrl, id]);
-  return getData();
-}
+        <div class="search-box">
+            <div class="filters" id="filterGroup">
+                <button class="active" onclick="setFilter('Tất cả', this)">Tất cả</button>
+                <button onclick="setFilter('Còn máy', this)">✅ Còn máy</button>
+                <button onclick="setFilter('Đã bán', this)">❌ Đã bán</button>
+                <button onclick="setFilter('Cho mượn', this)">🔄 Cho mượn</button>
+            </div>
+            <input type="text" id="searchInput" placeholder="🔍 Nhập Tên máy hoặc IMEI để tìm..." onkeyup="renderPhones()">
+        </div>
 
-function editPhone(id, phone) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Data');
-  var data = sheet.getDataRange().getValues();
-  for(var i = 1; i < data.length; i++){
-    if(data[i][6] == id){ // Cột G là index 6
-      var imageUrl = phone.image; 
-      if (phone.imageBase64) {
-         imageUrl = saveImage(phone.imageBase64, "IMG_" + phone.imei + "_" + id);
-      }
-      sheet.getRange(i+1, 1, 1, 6).setValues([[phone.name, phone.imei, phone.condition, phone.price, phone.status, imageUrl]]);
-      break;
-    }
-  }
-  return getData();
-}
+        <div class="form-card" id="formContainer">
+            <h3 id="formTitle">Nhập Máy Mới</h3>
+            <input type="hidden" id="editId" value="">
+            <input type="hidden" id="oldImage" value="">
+            
+            <input type="text" id="nameInput" placeholder="Tên máy (VD: iPhone 15 Pro Max)">
+            <input type="number" id="imeiInput" placeholder="Số IMEI">
+            <input type="text" id="conditionInput" placeholder="Tình trạng (VD: Zin 99%, Pin 90%)">
+            <input type="text" id="priceInput" placeholder="Giá bán (VD: 25.500.000)">
+            
+            <select id="statusInput">
+                <option value="Còn máy">✅ Trạng thái: Còn máy</option>
+                <option value="Đã bán">❌ Trạng thái: Đã bán</option>
+                <option value="Cho mượn">🔄 Trạng thái: Cho mượn</option>
+            </select>
 
-function deletePhone(id) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Data');
-  var data = sheet.getDataRange().getValues();
-  for(var i = 1; i < data.length; i++){
-    if(data[i][6] == id){
-      sheet.deleteRow(i+1);
-      break;
-    }
-  }
-  return getData();
-}
+            <span style="font-size: 14px; color: #636366; display: block; margin-top: 15px; margin-bottom: 5px;">Thêm ảnh sản phẩm (Không bắt buộc):</span>
+            <input type="file" id="imageInput" accept="image/*">
+            
+            <button onclick="processSave()" id="saveBtn">LƯU THÔNG TIN</button>
+            <button onclick="clearForm()" style="background: #e5e5ea; color: #1c1c1e; display: none;" id="cancelBtn">Hủy thao tác</button>
+        </div>
+
+        <div class="phone-list" id="phoneList"></div>
+    </div>
+
+    <script>
+        // --- DÁN LINK GOOGLE APPS SCRIPT CỦA BẠN VÀO DÒNG BÊN DƯỚI ---
+        const GOOGLE_SCRIPT_URL = "LINK_GOOGLE_SCRIPT_CUA_BAN_O_DAY";
+        // -------------------------------------------------------------
+
+        let phones = [];
+        let currentStatusFilter = 'Tất cả';
+
+        window.onload = function() {
+            showLoading(true, "Đang tải kho dữ liệu...");
+            fetchData({action: 'getData'});
+        };
+
+        function fetchData(payload, successMessage) {
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                phones = data;
+                renderPhones();
+                clearForm();
+                showLoading(false);
+                if(successMessage) alert(successMessage);
+            })
+            .catch(error => {
+                showLoading(false);
+                alert("Có lỗi xảy ra: " + error);
+            });
+        }
+
+        function setFilter(status, btnElement) {
+            currentStatusFilter = status;
+            let btns = document.getElementById('filterGroup').children;
+            for(let i=0; i<btns.length; i++) btns[i].classList.remove('active');
+            btnElement.classList.add('active');
+            renderPhones();
+        }
+
+        function renderPhones() {
+            const list = document.getElementById('phoneList');
+            list.innerHTML = '';
+            const searchText = document.getElementById('searchInput').value.toLowerCase();
+            
+            const filteredPhones = phones.filter(phone => {
+                const matchText = phone.name.toLowerCase().includes(searchText) || phone.imei.toString().includes(searchText);
+                const matchStatus = (currentStatusFilter === 'Tất cả') || (phone.status === currentStatusFilter);
+                return matchText && matchStatus;
+            });
+
+            if(filteredPhones.length === 0) {
+                list.innerHTML = '<p style="text-align:center; color:#8e8e93; margin-top: 30px;">Không tìm thấy máy nào phù hợp!</p>';
+                return;
+            }
+
+            [...filteredPhones].reverse().forEach(phone => {
+                let badgeClass = 'badge-con-may';
+                if(phone.status === 'Đã bán') badgeClass = 'badge-da-ban';
+                if(phone.status === 'Cho mượn') badgeClass = 'badge-cho-muon';
+
+                let imgHtml = phone.image ? `<img src="${phone.image}" alt="Ảnh máy">` : '';
+
+                list.innerHTML += `
+                    <div class="phone-item">
+                        <span class="badge ${badgeClass}">${phone.status}</span>
+                        ${imgHtml}
+                        <strong>${phone.name}</strong>
+                        <span>IMEI: ${phone.imei}</span>
+                        <span>Tình trạng: ${phone.condition}</span>
+                        <span>Giá bán: <span class="price">${phone.price}</span></span>
+                        <div class="action-btn">
+                            <button class="btn-edit" onclick="editPhone('${phone.id}')">Sửa</button>
+                            <button class="btn-delete" onclick="deletePhone('${phone.id}')">Xóa</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function processSave() {
+            const name = document.getElementById('nameInput').value.trim();
+            const imei = document.getElementById('imeiInput').value.trim();
+            
+            if (!name || !imei) {
+                alert('Vui lòng nhập Tên máy và IMEI!');
+                return;
+            }
+
+            const fileInput = document.getElementById('imageInput');
+            if (fileInput.files.length > 0) {
+                showLoading(true, "Đang tải ảnh lên Drive và lưu dữ liệu...");
+                const file = fileInput.files[0];
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    savePhone(e.target.result); 
+                };
+                reader.readAsDataURL(file);
+            } else {
+                showLoading(true, "Đang lưu dữ liệu...");
+                savePhone(null); 
+            }
+        }
+
+        function savePhone(imageBase64) {
+            const phoneData = { 
+                name: document.getElementById('nameInput').value.trim(), 
+                imei: document.getElementById('imeiInput').value.trim(), 
+                condition: document.getElementById('conditionInput').value.trim(), 
+                price: document.getElementById('priceInput').value.trim(), 
+                status: document.getElementById('statusInput').value, 
+                image: document.getElementById('oldImage').value, 
+                imageBase64: imageBase64 
+            };
+            
+            const editId = document.getElementById('editId').value;
+            const payloadString = JSON.stringify(phoneData);
+
+            if (!editId) {
+                fetchData({action: 'addPhone', phoneData: payloadString});
+            } else {
+                fetchData({action: 'editPhone', id: editId, phoneData: payloadString});
+            }
+        }
+
+        function editPhone(id) {
+            const phone = phones.find(p => p.id == id);
+            if (phone) {
+                document.getElementById('nameInput').value = phone.name;
+                document.getElementById('imeiInput').value = phone.imei;
+                document.getElementById('conditionInput').value = phone.condition;
+                document.getElementById('priceInput').value = phone.price;
+                document.getElementById('statusInput').value = phone.status || 'Còn máy';
+                document.getElementById('editId').value = id;
+                document.getElementById('oldImage').value = phone.image || '';
+                
+                document.getElementById('formTitle').innerText = 'Cập Nhật Thông Tin';
+                document.getElementById('saveBtn').innerText = 'LƯU THAY ĐỔI';
+                document.getElementById('cancelBtn').style.display = 'block';
+                
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        function deletePhone(id) {
+            if (confirm('Bạn có chắc chắn muốn xóa máy này khỏi danh sách?')) {
+                showLoading(true, "Đang xóa dữ liệu...");
+                fetchData({action: 'deletePhone', id: id});
+            }
+        }
+
+        function clearForm() {
+            document.getElementById('nameInput').value = '';
+            document.getElementById('imeiInput').value = '';
+            document.getElementById('conditionInput').value = '';
+            document.getElementById('priceInput').value = '';
+            document.getElementById('statusInput').value = 'Còn máy';
+            document.getElementById('imageInput').value = '';
+            document.getElementById('editId').value = '';
+            document.getElementById('oldImage').value = '';
+            
+            document.getElementById('formTitle').innerText = 'Nhập Máy Mới';
+            document.getElementById('saveBtn').innerText = 'LƯU THÔNG TIN';
+            document.getElementById('cancelBtn').style.display = 'none';
+        }
+
+        function showLoading(show, text = 'Đang xử lý...') {
+            document.getElementById('loading').style.display = show ? 'flex' : 'none';
+            document.getElementById('loading-text').innerText = text;
+        }
+    </script>
+</body>
+</html>
