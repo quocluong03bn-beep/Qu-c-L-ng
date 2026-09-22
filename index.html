@@ -91,9 +91,10 @@
     </div>
 
     <script>
-        // --- DÁN LINK GOOGLE APPS SCRIPT CỦA BẠN VÀO DÒNG BÊN DƯỚI ---
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxV4jQbJPOxlo2FchkYZZiGjZ5VSqDJZtIq0BdPNtvwIOdY4-83puCcdDQkc4HZkz5MCQ/exec";
-        // -------------------------------------------------------------
+        <script>
+        // --- DÁN LINK GOOGLE APPS SCRIPT MỚI CỦA BẠN VÀO ĐÂY ---
+        const GOOGLE_SCRIPT_URL = "LINK_GOOGLE_SCRIPT_CUA_BAN_O_DAY";
+        // -------------------------------------------------------
 
         let phones = [];
         let currentStatusFilter = 'Tất cả';
@@ -103,14 +104,19 @@
             fetchData({action: 'getData'});
         };
 
+        // Hàm này đã được viết lại hoàn toàn để vượt qua chặn CORS của trình duyệt
         function fetchData(payload, successMessage) {
             fetch(GOOGLE_SCRIPT_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams(payload)
+                body: JSON.stringify(payload)
             })
             .then(response => response.json())
             .then(data => {
+                if (data.error) {
+                    alert("Lỗi từ Google: " + data.error);
+                    showLoading(false);
+                    return;
+                }
                 phones = data;
                 renderPhones();
                 clearForm();
@@ -119,7 +125,7 @@
             })
             .catch(error => {
                 showLoading(false);
-                alert("Có lỗi xảy ra: " + error);
+                alert("Kết nối thất bại. Hãy kiểm tra lại mạng: " + error);
             });
         }
 
@@ -143,7 +149,7 @@
             });
 
             if(filteredPhones.length === 0) {
-                list.innerHTML = '<p style="text-align:center; color:#8e8e93; margin-top: 30px;">Không tìm thấy máy nào phù hợp!</p>';
+                list.innerHTML = '<p style="text-align:center; color:#8e8e93; margin-top: 30px;">Không tìm thấy máy nào!</p>';
                 return;
             }
 
@@ -182,7 +188,7 @@
 
             const fileInput = document.getElementById('imageInput');
             if (fileInput.files.length > 0) {
-                showLoading(true, "Đang tải ảnh lên Drive và lưu dữ liệu...");
+                showLoading(true, "Đang tải ảnh và lưu...");
                 const file = fileInput.files[0];
                 const reader = new FileReader();
                 reader.onload = function(e) {
@@ -207,12 +213,11 @@
             };
             
             const editId = document.getElementById('editId').value;
-            const payloadString = JSON.stringify(phoneData);
 
             if (!editId) {
-                fetchData({action: 'addPhone', phoneData: payloadString});
+                fetchData({action: 'addPhone', phoneData: phoneData}, "Đã thêm máy mới!");
             } else {
-                fetchData({action: 'editPhone', id: editId, phoneData: payloadString});
+                fetchData({action: 'editPhone', id: editId, phoneData: phoneData}, "Đã lưu cập nhật!");
             }
         }
 
@@ -227,7 +232,7 @@
                 document.getElementById('editId').value = id;
                 document.getElementById('oldImage').value = phone.image || '';
                 
-                document.getElementById('formTitle').innerText = 'Cập Nhật Thông Tin';
+                document.getElementById('formTitle').innerText = 'Cập Nhật Máy';
                 document.getElementById('saveBtn').innerText = 'LƯU THAY ĐỔI';
                 document.getElementById('cancelBtn').style.display = 'block';
                 
@@ -236,8 +241,8 @@
         }
 
         function deletePhone(id) {
-            if (confirm('Bạn có chắc chắn muốn xóa máy này khỏi danh sách?')) {
-                showLoading(true, "Đang xóa dữ liệu...");
+            if (confirm('Chắc chắn xóa máy này?')) {
+                showLoading(true, "Đang xóa...");
                 fetchData({action: 'deletePhone', id: id});
             }
         }
@@ -261,6 +266,9 @@
             document.getElementById('loading').style.display = show ? 'flex' : 'none';
             document.getElementById('loading-text').innerText = text;
         }
+    </script>
+</body>
+</html>
     </script>
 </body>
 </html>
